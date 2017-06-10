@@ -20,10 +20,16 @@ package org.apache.commons.compress.archivers.tar;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.GroupPrincipal;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
-
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipEncoding;
 import org.apache.commons.compress.utils.ArchiveUtils;
@@ -205,7 +211,7 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
     private boolean starSparse;
 
     /** The entry's file reference */
-    private final File file;
+    private final Path path;
 
     /** Maximum length of a user's name in the tar file */
     public static final int MAX_NAMELEN = 31;
@@ -230,7 +236,7 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
         }
 
         this.userName = user;
-        this.file = null;
+        this.path = null;
     }
 
     /**
@@ -305,7 +311,74 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      * @param file The file that the entry represents.
      */
     public TarArchiveEntry(final File file) {
-        this(file, file.getPath());
+        this(file.toPath());
+    }
+    /**
+     * Construct an entry for a path. Path is set to path, and the
+     * header is constructed from information from the item at path.
+     * The name is set from the normalized file path.
+     *
+     * @param path The path to the item that the entry represents.
+     */
+
+    public TarArchiveEntry(Path path) {
+        this(path,path.toString());
+    }
+
+    /**
+     * Construct an entry from a path. Path is set to path, and the
+     * header is constructed from information from the item represented by the path.
+     *
+     * @param path The file that the entry represents.
+     * @param fileName the name to be used for the entry.
+     */
+
+    public TarArchiveEntry(Path path, String fileName) {
+        final String normalizedName = normalizeFileName(fileName, false);
+        this.path = path;
+        try {
+            Map<String, Object> map = Files.readAttributes(path, "unix:*");
+            this.mode= (int) map.get("mode");
+            this.userId = (int)map.get("uid");
+            this.groupId = (int)map.get("gid");
+            this.userName = ((UserPrincipal)map.get("owner")).getName();
+            this.groupName = ((GroupPrincipal)map.get("group")).getName();
+            this.modTime = ((FileTime)map.get("lastModifiedTime")).toMillis();
+
+
+        } catch (IOException e) {
+            try {
+                this.modTime = Files.getLastModifiedTime(path).toMillis();
+            } catch (IOException e1) {
+                //mask
+            }
+            this.userName = "";
+
+        }
+
+        if (isDirectory()) {
+           if(mode == 0)
+               this.mode = DEFAULT_DIR_MODE;
+            this.linkFlag = LF_DIR;
+
+            final int nameLength = normalizedName.length();
+            if (nameLength == 0 || normalizedName.charAt(nameLength - 1) != '/') {
+                this.name = normalizedName + "/";
+            } else {
+                this.name = normalizedName;
+            }
+        } else {
+            if(mode == 0)
+               this.mode = DEFAULT_FILE_MODE;
+            this.linkFlag = LF_NORMAL;
+            try {
+                this.size = Files.size(path);
+            } catch (IOException e) {
+                //mask
+            }
+            this.name = normalizedName;
+        }
+
     }
 
     /**
@@ -316,28 +389,7 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      * @param fileName the name to be used for the entry.
      */
     public TarArchiveEntry(final File file, final String fileName) {
-        final String normalizedName = normalizeFileName(fileName, false);
-        this.file = file;
-
-        if (file.isDirectory()) {
-            this.mode = DEFAULT_DIR_MODE;
-            this.linkFlag = LF_DIR;
-
-            final int nameLength = normalizedName.length();
-            if (nameLength == 0 || normalizedName.charAt(nameLength - 1) != '/') {
-                this.name = normalizedName + "/";
-            } else {
-                this.name = normalizedName;
-            }
-        } else {
-            this.mode = DEFAULT_FILE_MODE;
-            this.linkFlag = LF_NORMAL;
-            this.size = file.length();
-            this.name = normalizedName;
-        }
-
-        this.modTime = file.lastModified() / MILLIS_PER_SECOND;
-        this.userName = "";
+        this(file.toPath(),fileName);
     }
 
     /**
@@ -367,6 +419,8 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
         this();
         parseTarHeader(headerBuf, encoding);
     }
+
+
 
     /**
      * Determine if the two entries are equal. Equality is determined
@@ -657,8 +711,20 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      * @return This entry's file.
      */
     public File getFile() {
-        return file;
+        return path.toFile();
     }
+
+    /**
+     * Get this entry's path.
+     *
+     * <p>This method is only useful for entries created from a {@code
+     * Path} but not for entries read from an archive.</p>
+     *
+     * @return This entry's path.
+     */
+     public Path getPath() {
+         return path;
+     }
 
     /**
      * Get this entry's mode.
@@ -851,8 +917,8 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      */
     @Override
     public boolean isDirectory() {
-        if (file != null) {
-            return file.isDirectory();
+        if (path != null) {
+            return Files.isDirectory(path);
         }
 
         if (linkFlag == LF_DIR) {
@@ -873,8 +939,8 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      * @return whether this is a "normal file"
      */
     public boolean isFile() {
-        if (file != null) {
-            return file.isFile();
+        if (path != null) {
+            return Files.isRegularFile(path);
         }
         if (linkFlag == LF_OLDNORM || linkFlag == LF_NORMAL) {
             return true;
@@ -952,21 +1018,21 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
      * @return An array of TarEntry's for this entry's children.
      */
     public TarArchiveEntry[] getDirectoryEntries() {
-        if (file == null || !file.isDirectory()) {
+        if (path == null || !isDirectory()) {
             return EMPTY_TAR_ARCHIVE_ENTRIES;
         }
 
-        final String[] list = file.list();
-        if (list == null) {
-            return EMPTY_TAR_ARCHIVE_ENTRIES;
+        ArrayList<TarArchiveEntry> entries = new ArrayList<>();;
+        try {
+            try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(path)) {
+                for (Path path : directoryStream) {
+                    entries.add(new TarArchiveEntry(path));
+                }
+            }
+        } catch (IOException e) {
         }
-        final TarArchiveEntry[] result = new TarArchiveEntry[list.length];
+        return entries.toArray(EMPTY_TAR_ARCHIVE_ENTRIES);
 
-        for (int i = 0; i < result.length; ++i) {
-            result[i] = new TarArchiveEntry(new File(file, list[i]));
-        }
-
-        return result;
     }
 
     /**
