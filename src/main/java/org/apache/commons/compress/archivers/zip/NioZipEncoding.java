@@ -26,6 +26,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
+import org.apache.commons.compress.internal.charset.HasCharset;
 
 /**
  * A ZipEncoding, which uses a java.nio {@link
@@ -38,7 +39,7 @@ import java.nio.charset.CodingErrorAction;
  * <p>The methods of this class are reentrant.</p>
  * @Immutable
  */
-class NioZipEncoding implements ZipEncoding {
+class NioZipEncoding implements ZipEncoding, HasCharset{
     private final Charset charset;
 
     /**
@@ -49,6 +50,15 @@ class NioZipEncoding implements ZipEncoding {
      */
     public NioZipEncoding(final Charset charset) {
         this.charset = charset;
+    }
+
+    /**
+     *
+     * @return the encoders character set.
+     */
+    @Override
+    public Charset getCharset() {
+        return charset;
     }
 
     /**
