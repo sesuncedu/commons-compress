@@ -20,11 +20,9 @@ package org.apache.commons.compress.archivers.tar;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
-
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipEncoding;
 import org.apache.commons.compress.utils.ArchiveUtils;
@@ -1058,54 +1056,6 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
                                                      length);
     }
 
-    public void writeEntryHeader(ByteBuffer buffer, ZipEncoding encoding, boolean starMode)
-        throws IOException {
-
-        TarUtils.formatNameBytes(name, buffer, NAMELEN, encoding);
-        writeEntryHeaderField(mode, buffer, MODELEN, starMode);
-        writeEntryHeaderField(userId, buffer, UIDLEN, starMode);
-        writeEntryHeaderField(groupId, buffer, GIDLEN, starMode);
-        writeEntryHeaderField(size, buffer, SIZELEN, starMode);
-        writeEntryHeaderField(modTime, buffer, MODTIMELEN, starMode);
-
-        final int csOffset = TarConstants.CHKSUM_OFFSET;
-
-        for (int c = 0; c < CHKSUMLEN; ++c) {
-            buffer.put((byte) ' ');
-        }
-
-        buffer.put(linkFlag);
-        TarUtils.formatNameBytes(linkName, buffer, NAMELEN, encoding);
-        TarUtils.formatNameBytes(magic, buffer, MAGICLEN);
-        TarUtils.formatNameBytes(version, buffer, VERSIONLEN);
-        TarUtils.formatNameBytes(userName, buffer, UNAMELEN,
-            encoding);
-        TarUtils.formatNameBytes(groupName, buffer, GNAMELEN, encoding);
-        writeEntryHeaderField(devMajor, buffer, DEVLEN, starMode);
-        writeEntryHeaderField(devMinor, buffer, DEVLEN, starMode);
-
-        while (buffer.hasRemaining()) {
-            buffer.put((byte) 0);
-        }
-
-        final long chk = TarUtils.computeCheckSum(buffer);
-
-        TarUtils.formatCheckSumOctalBytes(chk, buffer, csOffset, CHKSUMLEN);
-
-    }
-
-    private void writeEntryHeaderField(long value, ByteBuffer buffer, int length,
-        boolean starMode) {
-        if (!starMode && (value < 0 || value >= 1l << 3 * (length - 1))) {
-            // value doesn't fit into field when written as octal
-            // number, will be written to PAX header or causes an
-            // error
-            TarUtils.formatLongOctalBytes(0, buffer, length);
-        } else {
-            TarUtils.formatLongOctalOrBinaryBytes(value, buffer, length);
-        }
-    }
-
     /**
      * Parse an entry's header information from a header buffer.
      *
@@ -1281,6 +1231,54 @@ public class TarArchiveEntry implements ArchiveEntry, TarConstants {
             return FORMAT_POSIX;
         }
         return 0;
+    }
+    public void writeEntryHeader(final ByteBuffer buffer) throws IOException{
+            writeEntryHeader(buffer, TarUtils.DEFAULT_ENCODING, false);
+    }
+
+    public void writeEntryHeader(ByteBuffer buffer, ZipEncoding encoding, boolean starMode)
+        throws IOException {
+
+        TarUtils.formatNameBytes(name, buffer, NAMELEN, encoding);
+        writeEntryHeaderField(mode, buffer, MODELEN, starMode);
+        writeEntryHeaderField(userId, buffer, UIDLEN, starMode);
+        writeEntryHeaderField(groupId, buffer, GIDLEN, starMode);
+        writeEntryHeaderField(size, buffer, SIZELEN, starMode);
+        writeEntryHeaderField(modTime, buffer, MODTIMELEN, starMode);
+        buffer.position(buffer.position()+CHKSUMLEN);
+
+
+        buffer.put(linkFlag);
+        TarUtils.formatNameBytes(linkName, buffer, NAMELEN, encoding);
+        TarUtils.formatNameBytes(magic, buffer, MAGICLEN);
+        TarUtils.formatNameBytes(version, buffer, VERSIONLEN);
+        TarUtils.formatNameBytes(userName, buffer, UNAMELEN,
+            encoding);
+        TarUtils.formatNameBytes(groupName, buffer, GNAMELEN, encoding);
+        writeEntryHeaderField(devMajor, buffer, DEVLEN, starMode);
+        writeEntryHeaderField(devMinor, buffer, DEVLEN, starMode);
+
+        while (buffer.hasRemaining()) {
+            buffer.put((byte) 0);
+        }
+
+        final long chk = TarUtils.computeCheckSum(buffer);
+
+        TarUtils.formatCheckSumOctalBytes(chk, buffer, TarConstants.CHKSUM_OFFSET, CHKSUMLEN);
+
+    }
+
+    private void writeEntryHeaderField(long value, ByteBuffer buffer, int length,
+        boolean starMode) {
+        boolean willFitAsOctal = value < 0 || value >= 1l << 3 * (length - 1);
+        if (starMode || willFitAsOctal) {
+            TarUtils.formatLongOctalOrBinaryBytes(value, buffer, length);
+        } else {
+            // value doesn't fit into field when written as octal
+            // number, will be written to PAX header or causes an
+            // error
+            TarUtils.formatLongOctalBytes(0, buffer, length);
+        }
     }
 
     void fillGNUSparse0xData(final Map<String, String> headers) {
