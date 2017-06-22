@@ -18,8 +18,8 @@ dist: trusty
 language: java
 
 addons:
- - apt:
-   - packages:
+  apt:
+    packages:
       - openjdk-7-jdk
 
 jdk:
