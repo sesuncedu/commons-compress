@@ -20,6 +20,7 @@ package org.apache.commons.compress.archivers.tar;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.Locale;
@@ -27,6 +28,7 @@ import java.util.Map;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipEncoding;
 import org.apache.commons.compress.utils.ArchiveUtils;
+import org.apache.commons.compress.utils.CharsetNames;
 
 /**
  * This class represents an entry in a Tar archive. It consists
